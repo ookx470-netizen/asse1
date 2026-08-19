@@ -1,0 +1,8 @@
+{
+  "name": "ASSE Investment Platform",
+  "description": "ASSE digital investment platform offering structured fixed-return investment tiers, wallet management, tasks, and referral system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
