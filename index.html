@@ -455,7 +455,7 @@ select{background:#FBF7F0;border:1.5px solid #E8D9BC;border-radius:12px;padding:
         <div class="ref-t">Recruit &amp; Earn</div>
         <div class="ref-s">Share your link and earn referral bonuses</div>
         <div class="ref-link">
-          <div class="ref-link-txt" id="ref-link1">https://www.asse.blog/?ref=DB00000</div>
+          <div class="ref-link-txt" id="ref-link1">Loading link...</div>
           <button class="ref-copy-btn" onclick="copyRef('ref-link1')">Copy</button>
         </div>
       </div>
@@ -582,7 +582,7 @@ select{background:#FBF7F0;border:1.5px solid #E8D9BC;border-radius:12px;padding:
     <div class="ref-t">Your Referral Link</div>
     <div class="ref-s">Earn bonuses when friends subscribe to a plan</div>
     <div class="ref-link">
-      <div class="ref-link-txt" id="ref-link2">https://www.asse.blog/?ref=DB00000</div>
+      <div class="ref-link-txt" id="ref-link2">Loading link...</div>
       <button class="ref-copy-btn" onclick="copyRef('ref-link2')">Copy</button>
     </div>
   </div>
@@ -691,22 +691,8 @@ select{background:#FBF7F0;border:1.5px solid #E8D9BC;border-radius:12px;padding:
 <!-- SUPPORT / CONTACT -->
 <div class="page" id="pg-support">
   <div class="phdr"><button class="back-btn" onclick="closePage('pg-support')">&#8249;</button><div class="page-title">Contact Support</div></div>
-  <div style="padding:14px">
-
-    <div class="fc">
-      <div class="fc-title">Official Telegram Channel</div>
-      <a href="https://t.me/asse_24" target="_blank" rel="noopener" class="menu-item" style="text-decoration:none;color:inherit"><div class="mi-ico" style="background:linear-gradient(135deg,#2196F3,#21CBF3)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div><div><div class="mi-name">ASSE News & Updates</div><div class="mi-sub">@asse_24</div></div><div class="mi-arr">&#8250;</div></a>
-    </div>
-
-    <div class="fc">
-      <div class="fc-title">Telegram Admins</div>
-      <a href="https://t.me/MichaelFrancis71" target="_blank" rel="noopener" class="menu-item" style="text-decoration:none;color:inherit"><div class="mi-ico" style="background:linear-gradient(135deg,#2196F3,#21CBF3)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div><div><div class="mi-name">Admin 1</div><div class="mi-sub">@MichaelFrancis71</div></div><div class="mi-arr">&#8250;</div></a>
-      <a href="https://t.me/Adrian_Alexander2" target="_blank" rel="noopener" class="menu-item" style="text-decoration:none;color:inherit"><div class="mi-ico" style="background:linear-gradient(135deg,#2196F3,#21CBF3)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div><div><div class="mi-name">Admin 2</div><div class="mi-sub">@Adrian_Alexander2</div></div><div class="mi-arr">&#8250;</div></a>
-      <a href="https://t.me/DAVIDMARINO12" target="_blank" rel="noopener" class="menu-item" style="text-decoration:none;color:inherit"><div class="mi-ico" style="background:linear-gradient(135deg,#2196F3,#21CBF3)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div><div><div class="mi-name">Admin 3</div><div class="mi-sub">@DAVIDMARINO12</div></div><div class="mi-arr">&#8250;</div></a>
-      <a href="https://t.me/ASSE_15" target="_blank" rel="noopener" class="menu-item" style="text-decoration:none;color:inherit"><div class="mi-ico" style="background:linear-gradient(135deg,#2196F3,#21CBF3)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div><div><div class="mi-name">Admin 4</div><div class="mi-sub">@ASSE_15</div></div><div class="mi-arr">&#8250;</div></a>
-    </div>
-
-    <div class="warn-box"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M12 3 2 20h20z"/><path d="M12 9v5"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg> Only contact the official accounts listed here. ASSE will never ask for your password or transaction PIN.</div>
+  <div style="padding:14px" id="support-content">
+    <!-- Dynamic content injected by renderSupport() -->
   </div>
 </div>
 
@@ -981,7 +967,7 @@ var auth = {
 
 // ── DATA ──
 var U = {}, WD = [], RC = [], LOG = [];
-var CU = null, CP = null, ADMIN_OK = false, ADMT = 'users';
+var CU = null, CP = null, ADMIN_OK = false, ADMT = 'users', LVL_IDX = 0;
 var GEN_RATES = [0.12, 0.05, 0.02];
 
 // ── FIRESTORE HELPERS ──
@@ -1034,6 +1020,12 @@ async function loadData() {
     // Rates
     var rateSnap = await db.collection('settings').doc('gen_rates').get();
     if(rateSnap.exists) GEN_RATES = rateSnap.data().rates || GEN_RATES;
+    // Wallets
+    var walletSnap = await db.collection('settings').doc('wallets').get();
+    if(walletSnap.exists) WALLETS = walletSnap.data() || WALLETS;
+    // Telegram
+    var tgSnap = await db.collection('settings').doc('telegram').get();
+    if(tgSnap.exists) TELEGRAM = tgSnap.data() || TELEGRAM;
   } catch(e){ console.error('loadData error:',e); }
 }
 
@@ -1052,6 +1044,7 @@ var WALLETS = {
   'USDT.BEP20': '0x7C4C9dad2e86af69B5ea39615e0214DDcaD58522',
   'USDT.Polygon': '0x7C4C9dad2e86af69B5ea39615e0214DDcaD58522'
 };
+var TELEGRAM = { channel: 'asse_24', admin1: 'MichaelFrancis71', admin2: 'Adrian_Alexander2', admin3: 'DAVIDMARINO12', admin4: 'ASSE_15' };
 
 // ============ UTILS ============
 var toastTimer;
@@ -1106,6 +1099,7 @@ function openPage(id) {
   }
   if (id === 'pg-profile') updateProfile();
   if (id === 'pg-recruit') updateRefUI();
+  if (id === 'pg-support') renderSupport();
   if (id === 'pg-funds-rec') renderFundsRec();
   if (id === 'pg-earn-rec') renderEarnRec();
   if (id === 'pg-rc-rec') renderRCRec();
@@ -1301,10 +1295,44 @@ async function doLogin() {
   saveOneU(CU).catch(function(e){ console.error('login save:',e); });
   resetDailyCycle();
   updateHome(); renderPlans(); updateRefUI();
-  var uid = U[CU].id;
-  document.getElementById('ref-link1').textContent = 'https://www.asse.blog/?ref=' + uid;
-  document.getElementById('ref-link2').textContent = 'https://www.asse.blog/?ref=' + uid;
   showScreen('s-app'); appTab('home');
+}
+
+function renderSupport() {
+  var el = document.getElementById('support-content');
+  if (!el) return;
+  var tg = TELEGRAM || {};
+  var html = '';
+
+  html += '<div class="fc">';
+  html += '<div class="fc-title">Official Telegram Channel</div>';
+  html += '<a href="https://t.me/' + (tg.channel || 'asse_24') + '" target="_blank" rel="noopener" class="menu-item" style="text-decoration:none;color:inherit">';
+  html += '<div class="mi-ico" style="background:linear-gradient(135deg,#2196F3,#21CBF3)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div>';
+  html += '<div><div class="mi-name">ASSE News & Updates</div><div class="mi-sub">@' + (tg.channel || 'asse_24') + '</div></div><div class="mi-arr">&#8250;</div></a>';
+  html += '</div>';
+
+  html += '<div class="fc">';
+  html += '<div class="fc-title">Telegram Admins</div>';
+  
+  var admins = [
+    { label: 'Admin 1', key: 'admin1', def: 'MichaelFrancis71' },
+    { label: 'Admin 2', key: 'admin2', def: 'Adrian_Alexander2' },
+    { label: 'Admin 3', key: 'admin3', def: 'DAVIDMARINO12' },
+    { label: 'Admin 4', key: 'admin4', def: 'ASSE_15' }
+  ];
+
+  for (var i = 0; i < admins.length; i++) {
+    var a = admins[i];
+    var val = tg[a.key] || a.def;
+    html += '<a href="https://t.me/' + val + '" target="_blank" rel="noopener" class="menu-item" style="text-decoration:none;color:inherit">';
+    html += '<div class="mi-ico" style="background:linear-gradient(135deg,#2196F3,#21CBF3)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div>';
+    html += '<div><div class="mi-name">' + a.label + '</div><div class="mi-sub">@' + val + '</div></div><div class="mi-arr">&#8250;</div></a>';
+  }
+  html += '</div>';
+
+  html += '<div class="warn-box"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M12 3 2 20h20z"/><path d="M12 9v5"/><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"/></svg> Only contact the official accounts listed here. ASSE will never ask for your password or transaction PIN.</div>';
+  
+  el.innerHTML = html;
 }
 
 function resetDailyCycle() {
@@ -1970,6 +1998,14 @@ function copyRef(id) {
 function updateRefUI() {
   var u = CU ? U[CU] : null;
   if (!u) return;
+  var uid = u.id || '';
+  var domain = window.location.origin;
+  if (domain.includes('localhost') || domain.includes('google.com')) domain = 'https://www.asse.blog';
+  var fullLink = domain + '/?ref=' + uid;
+
+  var el1 = document.getElementById('ref-link1'); if(el1) el1.textContent = fullLink;
+  var el2 = document.getElementById('ref-link2'); if(el2) el2.textContent = fullLink;
+
   var cnt = u.refs ? u.refs.length : 0;
   var earn = '$' + (u.teamCommission || 0).toFixed(2);
   document.getElementById('ref-c1').textContent = cnt;
@@ -2306,7 +2342,20 @@ function renderAdminDashboard() {
     html += '<input type="text" id="adm-w-bep20" value="' + (WALLETS['USDT.BEP20']||'') + '" style="background:#fff;border:1px solid #E8D9BC;padding:12px;border-radius:10px;width:100%;margin-bottom:12px;font-size:12px">';
     html += '<label>USDT.Polygon Wallet Address</label>';
     html += '<input type="text" id="adm-w-poly" value="' + (WALLETS['USDT.Polygon']||'') + '" style="background:#fff;border:1px solid #E8D9BC;padding:12px;border-radius:10px;width:100%;margin-bottom:16px;font-size:12px">';
-    html += '<button class="btn btn-blue" onclick="admSaveWallets()">Save Wallet Addresses</button>';
+    
+    html += '<div class="fc-title" style="margin-top:10px">Support Telegram Settings</div>';
+    html += '<label>Official Channel Username (without @)</label>';
+    html += '<input type="text" id="adm-tg-chan" value="' + (TELEGRAM.channel||'') + '" style="background:#fff;border:1px solid #E8D9BC;padding:12px;border-radius:10px;width:100%;margin-bottom:12px;font-size:12px">';
+    html += '<label>Admin 1 Username</label>';
+    html += '<input type="text" id="adm-tg-a1" value="' + (TELEGRAM.admin1||'') + '" style="background:#fff;border:1px solid #E8D9BC;padding:12px;border-radius:10px;width:100%;margin-bottom:12px;font-size:12px">';
+    html += '<label>Admin 2 Username</label>';
+    html += '<input type="text" id="adm-tg-a2" value="' + (TELEGRAM.admin2||'') + '" style="background:#fff;border:1px solid #E8D9BC;padding:12px;border-radius:10px;width:100%;margin-bottom:12px;font-size:12px">';
+    html += '<label>Admin 3 Username</label>';
+    html += '<input type="text" id="adm-tg-a3" value="' + (TELEGRAM.admin3||'') + '" style="background:#fff;border:1px solid #E8D9BC;padding:12px;border-radius:10px;width:100%;margin-bottom:12px;font-size:12px">';
+    html += '<label>Admin 4 Username</label>';
+    html += '<input type="text" id="adm-tg-a4" value="' + (TELEGRAM.admin4||'') + '" style="background:#fff;border:1px solid #E8D9BC;padding:12px;border-radius:10px;width:100%;margin-bottom:16px;font-size:12px">';
+    
+    html += '<button class="btn btn-blue" onclick="admSaveSettings()">Save All Settings</button>';
     html += '</div>';
 
     content.innerHTML = html;
@@ -2509,18 +2558,29 @@ function confirmAdmRegisterUser() {
   renderAdminDashboard();
 }
 
-async function admSaveWallets() {
+async function admSaveSettings() {
   var trc20 = document.getElementById('adm-w-trc20').value.trim();
   var bep20 = document.getElementById('adm-w-bep20').value.trim();
   var poly = document.getElementById('adm-w-poly').value.trim();
+  var chan = document.getElementById('adm-tg-chan').value.trim().replace('@','');
+  var a1 = document.getElementById('adm-tg-a1').value.trim().replace('@','');
+  var a2 = document.getElementById('adm-tg-a2').value.trim().replace('@','');
+  var a3 = document.getElementById('adm-tg-a3').value.trim().replace('@','');
+  var a4 = document.getElementById('adm-tg-a4').value.trim().replace('@','');
+
   if (trc20) WALLETS['USDT.TRC20'] = trc20;
   if (bep20) WALLETS['USDT.BEP20'] = bep20;
   if (poly) WALLETS['USDT.Polygon'] = poly;
+
+  TELEGRAM = { channel: chan, admin1: a1, admin2: a2, admin3: a3, admin4: a4 };
+
   try {
     await db.collection('settings').doc('wallets').set(WALLETS);
+    await db.collection('settings').doc('telegram').set(TELEGRAM);
   } catch(e) {}
-  addLog('Admin updated system deposit wallet addresses');
-  showToast('Wallet addresses saved ✓');
+  addLog('Admin updated system settings (Wallets/Telegram)');
+  showToast('Settings saved successfully ✓');
+  renderSupport();
 }
 
 window.switchAuthView=switchAuthView;
@@ -2538,7 +2598,7 @@ window.admSetPlan = admSetPlan;
 window.admResetPW = admResetPW;
 window.admToggleBlock = admToggleBlock;
 window.admRegisterPrompt = admRegisterPrompt;
-window.admSaveWallets = admSaveWallets;
+window.admSaveSettings = admSaveSettings;
 window.confirmAdmAddBal = confirmAdmAddBal;
 window.confirmAdmDeductBal = confirmAdmDeductBal;
 window.confirmAdmSetPlan = confirmAdmSetPlan;
