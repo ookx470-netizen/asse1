@@ -2144,17 +2144,11 @@ async function doRegisterNew() {
   var key = flag + phone;
   var sKey = sanitizeKey(key);
 
-  var existing;
-  try { existing = await db.collection('users').doc(sKey).get(); }
-  catch(e) { showToast('Network error, try again'); return; }
-  if (existing.exists) { showToast('Account already exists'); return; }
+  // ملاحظة: لا يوجد فحص وجود مسبق هنا (قواعد الأمان لا تسمح لغير المسجّل دخوله بقراءة/استعلام
+  // مجموعة users قبل إنشاء حسابه) — الاعتماد بدل ذلك على خطأ Firebase Auth الطبيعي
+  // (auth/email-already-in-use) بالأسفل، وهو تحقق حقيقي وكافٍ من التكرار.
 
-  var uid, tries = 0, dupes = [];
-  do {
-    uid = 'DB' + Math.floor(10000 + Math.random() * 90000);
-    tries++;
-    try { dupes = await db.collection('users').where('id','==',uid); } catch(e) { dupes = []; }
-  } while (dupes.length && tries < 6);
+  var uid = 'DB' + Math.floor(10000 + Math.random() * 90000);
 
   // ملاحظة أمنية: لا يوجد حقل pass هنا إطلاقًا — كلمة المرور تُدار حصريًا عبر Firebase Auth
   U[key] = {
@@ -2166,12 +2160,15 @@ async function doRegisterNew() {
     teamCommission: 0, teamCommToday: 0, teamCommTodayDate: '', refBy: null
   };
 
+  // البحث عن المُحيل عبر فهرس عام (ref_index) بدل استعلام where غير المتاح قبل تسجيل الدخول
   var refDocId = null;
   if (ref) {
     try {
-      var m = await db.collection('users').where('id','==',ref);
-      if (!m.length) m = await db.collection('users').where('refCode','==',ref);
-      if (m.length && m[0].id !== sKey) { refDocId = m[0].id; U[key].refBy = m[0].data.phone; }
+      var ridx = await db.collection('ref_index').doc(sanitizeKey(ref)).get();
+      if (ridx.exists && ridx.data().docId !== sKey) {
+        refDocId = ridx.data().docId;
+        U[key].refBy = ridx.data().key;
+      }
     } catch(e) { console.warn('ref lookup failed:', e); }
   }
 
@@ -2182,10 +2179,11 @@ async function doRegisterNew() {
     U[key].firebaseUID   = cred2.user.uid;
     U[key].firebaseEmail = firebaseEmail2;
 
-    // الخطوة 2: حفظ البيانات في Firestore (مستند المستخدم + فهرس الهاتف + تحديث المُحيل)
+    // الخطوة 2: حفظ البيانات في Firestore (مستند المستخدم + فهرس الهاتف + فهرس الإحالة + تحديث المُحيل)
     try {
       await saveOneU(key);
       await db.collection('phone_index').doc(sanitizeKey(phone)).set({ key: key, email: firebaseEmail2 });
+      await db.collection('ref_index').doc(sanitizeKey(uid)).set({ docId: sKey, key: key });
       if (refDocId) await db.collection('users').doc(refDocId).update({ refs: db.arrayUnionVal(uid) });
     } catch(saveErr) {
       console.error('Firestore save error:', saveErr);
@@ -2583,6 +2581,7 @@ async function confirmAdmRegisterUser() {
   };
   await saveOneU(ph).catch(function(){});
   try { await db.collection('phone_index').doc(sKey).set({ key: ph, email: firebaseEmail }); } catch(e){}
+  try { await db.collection('ref_index').doc(sanitizeKey(uid)).set({ docId: sKey, key: ph }); } catch(e){}
   addLog('Admin created user ' + ph + ' (' + uid + ')');
   showToast('Created user ' + ph + ' ✓');
   closeOverlay('ov-adm-newuser');
