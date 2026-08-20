@@ -904,24 +904,26 @@ select{background:#FBF7F0;border:1.5px solid #E8D9BC;border-radius:12px;padding:
 // ============================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection, getDocs, query, where, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
+// مشروع Firebase (نفس مشروع Blaze الفعّال المستخدم لمنصة أرباح) + قاعدة بيانات Firestore مستقلة باسم asse-main
 const firebaseConfig = {
-  apiKey: "AIzaSyAuOzU5mZYMwyycNCgWiLp6FsmNG1eVPZ0",
-  authDomain: "asse-platform.firebaseapp.com",
-  projectId: "asse-platform",
-  storageBucket: "asse-platform.firebasestorage.app",
-  messagingSenderId: "484369667287",
-  appId: "1:484369667287:web:de86db90e76a0413e94c92",
-  measurementId: "G-DYWPCCKM23"
+  apiKey: "AIzaSyCkU6rhlyQdazlD6TxvuILT-kJ4IfcF9rs",
+  authDomain: "practical-axon-t77bw.firebaseapp.com",
+  projectId: "practical-axon-t77bw",
+  storageBucket: "practical-axon-t77bw.firebasestorage.app",
+  messagingSenderId: "517514188720",
+  appId: "1:517514188720:web:77154b4a505a13ef52e875"
 };
 
 const _app = initializeApp(firebaseConfig);
-const _db = getFirestore(_app);
+const _db = getFirestore(_app, "asse-main");
 const _auth = getAuth(_app);
 
-// Firestore-compatible interface
+function sanitizeKey(k) { return String(k).replace(/[^a-zA-Z0-9_-]/g, '_'); }
+
+// Firestore-compatible interface (موسّعة: update / add / query بالإضافة لـ set/get/list)
 var db = {
   collection: function(cname) {
     return {
@@ -930,11 +932,21 @@ var db = {
           set: async function(obj) {
             await setDoc(doc(_db, cname, id), obj);
           },
+          update: async function(obj) {
+            await updateDoc(doc(_db, cname, id), obj);
+          },
           get: async function() {
             var snap = await getDoc(doc(_db, cname, id));
             return { exists: snap.exists(), data: function(){ return snap.data(); } };
+          },
+          delete: async function() {
+            await deleteDoc(doc(_db, cname, id));
           }
         };
+      },
+      add: async function(obj) {
+        var ref = await addDoc(collection(_db, cname), obj);
+        return { id: ref.id };
       },
       get: async function() {
         var snap = await getDocs(collection(_db, cname));
@@ -942,9 +954,17 @@ var db = {
           forEach: function(cb){ snap.forEach(cb); },
           docs: snap.docs
         };
+      },
+      where: async function(field, op, val) {
+        var q = query(collection(_db, cname), where(field, op, val));
+        var snap = await getDocs(q);
+        var out = [];
+        snap.forEach(function(d){ out.push({ id: d.id, data: d.data() }); });
+        return out;
       }
     };
-  }
+  },
+  arrayUnionVal: arrayUnion
 };
 
 // Auth-compatible interface
@@ -962,6 +982,26 @@ var auth = {
   },
   onAuthStateChanged: function(cb) {
     return onAuthStateChanged(_auth, cb);
+  },
+  changeOwnPassword: async function(email, currentPw, newPw) {
+    var cred = EmailAuthProvider.credential(email, currentPw);
+    await reauthenticateWithCredential(_auth.currentUser, cred);
+    await updatePassword(_auth.currentUser, newPw);
+  },
+  currentUid: function() {
+    return _auth.currentUser ? _auth.currentUser.uid : null;
+  },
+  // إنشاء حساب مستخدم جديد من لوحة الأدمن عبر تطبيق Firebase ثانوي معزول،
+  // حتى لا يحل حساب المستخدم الجديد محل جلسة دخول الأدمن الحالية (سلوك افتراضي بـ Firebase Auth)
+  createUserAsAdmin: async function(email, pw) {
+    var secApp;
+    try { secApp = initializeApp(firebaseConfig, 'AdminSecondary_' + Date.now()); }
+    catch(e) { secApp = initializeApp(firebaseConfig, 'AdminSecondaryFallback'); }
+    var secAuth = getAuth(secApp);
+    var cred = await createUserWithEmailAndPassword(secAuth, email, pw);
+    var uidOut = cred.user.uid;
+    try { await signOut(secAuth); } catch(e){}
+    return uidOut;
   }
 };
 
@@ -971,21 +1011,16 @@ var CU = null, CP = null, ADMIN_OK = false, ADMT = 'users', LVL_IDX = 0;
 var GEN_RATES = [0.12, 0.05, 0.02];
 
 // ── FIRESTORE HELPERS ──
-async function saveU() {
-  try { await db.collection('settings').doc('users').set(U); } catch(e){ console.error('saveU',e); }
-}
+// ملاحظة أمنية: لا يوجد مستند واحد ضخم يجمع كل المستخدمين بعد الآن — كل مستخدم مستند مستقل
+// بمعرف = رقم هاتفه المُطهَّر فقط، وقواعد الأمان تمنع أي مستخدم من قراءة/كتابة مستند غيره.
+// كذلك لا تُخزَّن كلمة المرور (pass) في Firestore إطلاقًا — Firebase Auth هو المصدر الوحيد لها.
 async function saveOneU(key) {
   if (!U[key]) return;
   try {
-    await db.collection('users').doc(key.replace(/[^a-zA-Z0-9_-]/g,'_')).set(U[key]);
-    await saveU();
+    var clean = Object.assign({}, U[key]);
+    delete clean.pass; // لا نخزّن كلمة المرور أبدًا في Firestore
+    await db.collection('users').doc(sanitizeKey(key)).set(clean);
   } catch(e){ console.error('saveOneU',e); }
-}
-async function saveWD() {
-  try { await db.collection('settings').doc('withdrawals').set({list: WD}); } catch(e){ console.error('saveWD',e); }
-}
-async function saveRC() {
-  try { await db.collection('settings').doc('recharges').set({list: RC}); } catch(e){ console.error('saveRC',e); }
 }
 async function saveRate() {
   try { await db.collection('settings').doc('gen_rates').set({rates: GEN_RATES}); } catch(e){}
@@ -993,40 +1028,51 @@ async function saveRate() {
 async function addLog(action) {
   var entry = {action:action, time:new Date().toLocaleString(), ts:Date.now()};
   LOG.unshift(entry); if(LOG.length>300) LOG.length=300;
-  try { await db.collection('settings').doc('logs').set({list: LOG}); } catch(e){}
+  try { await db.collection('logs').add(entry); } catch(e){}
 }
 
-// ── LOAD ALL DATA ──
-async function loadData() {
+// إعدادات عامة (متاحة قبل تسجيل الدخول): أسعار العمولة، محافظ الإيداع، تيليجرام
+async function loadPublicConfig() {
   try {
-    // Users
-    var usersSnap = await db.collection('settings').doc('users').get();
-    U = usersSnap.exists ? (usersSnap.data() || {}) : {};
-    // Individual user docs (sync)
-    try {
-      var userDocs = await db.collection('users').get();
-      userDocs.forEach(function(d){ var dat=d.data(); if(dat && dat.phone) U[dat.phone]=dat; });
-    } catch(e){}
-    // Withdrawals
-    var wdSnap = await db.collection('settings').doc('withdrawals').get();
-    WD = wdSnap.exists ? (wdSnap.data().list||[]) : [];
-    // Recharges
-    var rcSnap = await db.collection('settings').doc('recharges').get();
-    RC = rcSnap.exists ? (rcSnap.data().list||[]) : [];
-    // Logs
-    var logSnap = await db.collection('settings').doc('logs').get();
-    LOG = logSnap.exists ? (logSnap.data().list||[]) : [];
-    LOG.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
-    // Rates
     var rateSnap = await db.collection('settings').doc('gen_rates').get();
     if(rateSnap.exists) GEN_RATES = rateSnap.data().rates || GEN_RATES;
-    // Wallets
     var walletSnap = await db.collection('settings').doc('wallets').get();
     if(walletSnap.exists) WALLETS = walletSnap.data() || WALLETS;
-    // Telegram
     var tgSnap = await db.collection('settings').doc('telegram').get();
     if(tgSnap.exists) TELEGRAM = tgSnap.data() || TELEGRAM;
-  } catch(e){ console.error('loadData error:',e); }
+  } catch(e){ console.error('loadPublicConfig error:',e); }
+}
+
+// بيانات المستخدم الحالي فقط بعد نجاح تسجيل الدخول
+async function loadMyUser(key) {
+  try {
+    var snap = await db.collection('users').doc(sanitizeKey(key)).get();
+    if (snap.exists) U[key] = Object.assign({}, U[key]||{}, snap.data());
+  } catch(e){ console.error('loadMyUser error:',e); }
+}
+
+// بيانات الأدمن الكاملة — تُستدعى فقط بعد التحقق من admins/{uid}؛ قواعد الأمان تمنع غير الأدمن من قراءتها
+async function loadAdminData() {
+  try {
+    var userDocs = await db.collection('users').get();
+    userDocs.forEach(function(d){ var dat=d.data(); if(dat && dat.phone) U[dat.phone]=dat; });
+  } catch(e){ console.error('loadAdminData users:',e); }
+  try {
+    var depDocs = await db.collection('deposits').get();
+    RC = [];
+    depDocs.forEach(function(d){ var dat=d.data(); dat.__docId = d.id; RC.push(dat); });
+  } catch(e){ console.error('loadAdminData deposits:',e); }
+  try {
+    var wdDocs = await db.collection('withdrawals').get();
+    WD = [];
+    wdDocs.forEach(function(d){ var dat=d.data(); dat.__docId = d.id; WD.push(dat); });
+  } catch(e){ console.error('loadAdminData withdrawals:',e); }
+  try {
+    var logDocs = await db.collection('logs').get();
+    LOG = [];
+    logDocs.forEach(function(d){ var dat=d.data(); dat.__docId = d.id; LOG.push(dat); });
+    LOG.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
+  } catch(e){ console.error('loadAdminData logs:',e); }
 }
 
 var PLANS = [
@@ -1166,90 +1212,19 @@ function sanitize(str) {
 }
 
 async function doRegister() {
-  var flag = document.getElementById('r-flag').value;
-  var phone = document.getElementById('r-phone').value.trim();
-  var pw = document.getElementById('r-pw').value;
-  var pw2 = document.getElementById('r-pw2').value;
-  var ref = document.getElementById('r-ref').value.trim().toUpperCase();
-
-  // تحقق من رقم الهاتف - أرقام فقط
-  if (!phone) { showToast('Phone number required'); return; }
-  if (!/^\d{6,15}$/.test(phone)) { showToast('Phone must be 6-15 digits only'); return; }
-  if (!validatePass(pw)) { showToast('Password: 6-10 chars with letters & numbers'); return; }
-  if (pw !== pw2) { showToast('Passwords do not match'); return; }
-
-  var key = flag + phone;
-  if (U[key]) { showToast('Account already exists'); return; }
-
-  var uid;
-  do { uid = 'DB' + Math.floor(10000 + Math.random() * 90000); } while (existingIds()[uid]);
-
-  U[key] = {
-    phone: key, id: uid, name: sanitize('User ' + uid.slice(-4)),
-    pass: pw, txPass: '', bal: 0, totalEarned: 0, refBonus: 0, workDays: 0,
-    plan: null, tasksDone: 0, lastTaskDate: '', lastIncDate: '',
-    deposits: [], withdrawals: [], planPurchased: [],
-    walletAddr: '', refCode: uid, refs: [], joined: fmtDate(),
-    lockedFunds: 0, teamCommission: 0, teamCommToday: 0, teamCommTodayDate: '', refBy: null
-  };
-
-  if (ref) {
-    var keys2 = Object.keys(U);
-    for (var i = 0; i < keys2.length; i++) {
-      var rk = keys2[i];
-      if (U[rk].id === ref || U[rk].refCode === ref) {
-        if (rk === key) break; // لا يحيل نفسه
-        U[rk].refs.push(uid);
-        U[key].refBy = rk;
-        break;
-      }
-    }
-  }
-
-  var firebaseEmail = key.replace(/[^a-zA-Z0-9]/g,'') + '@asse.app';
-  try {
-    var cred = await auth.createUserWithEmailAndPassword(firebaseEmail, pw);
-    U[key].firebaseUID   = cred.user.uid;
-    U[key].firebaseEmail = firebaseEmail;
-    try {
-      saveOneU(key).catch(function(e){ console.error('reg save:',e); });
-      if (U[key].refBy) saveOneU(U[key].refBy).catch(function(e){ console.error('refBy save:',e); });
-    } catch(saveErr) { console.error('Firestore save error:', saveErr); }
-    await auth.signOut();
-    showToast('Account created! Please login.');
-    switchAuthView('login');
-  } catch(e) {
-    delete U[key];
-    console.error('Registration error:', e.code, e.message);
-    if (e.code === 'auth/email-already-in-use') showToast('Account already exists');
-    else if (e.code === 'auth/weak-password') showToast('Password too weak');
-    else if (e.code === 'auth/network-request-failed') showToast('No internet connection');
-    else if (e.code === 'auth/operation-not-allowed') showToast('Email login not enabled in Firebase Console');
-    else showToast('Error: ' + (e.code || e.message || 'Unknown'));
-  }
+  // نسخة قديمة مكررة — توجَّه لنفس مسار التسجيل الحقيقي المتصل بالواجهة (doRegisterNew) لتفادي ازدواجية المنطق
+  return doRegisterNew();
 }
 
-
 var loginAttempts = {};
-// بيانات دخول الأدمن السرية — لا تظهر في أي واجهة، تُدخل فقط عبر نفس فورم تسجيل الدخول العادي
-var ADMIN_PHONE = '07519952000';
-var ADMIN_PASS  = 'hemoome1995';
+// لا يوجد أي باسورد أدمن ثابت بالكود بعد الآن. صلاحية الأدمن تُمنح فقط لمن له مستند
+// admins/{firebaseUID} داخل قاعدة البيانات (يُنشأ يدويًا من Firebase Console بعد أن يسجّل
+// الحساب دخوله كعضو عادي مرة واحدة لمعرفة الـ UID الخاص به). لا كلمة مرور مكشوفة بأي مكان.
 
 async function doLogin() {
   var id = document.getElementById('li-id').value.trim();
   var pw = document.getElementById('li-pw').value;
   if (!id || !pw) { showToast('Please enter phone and password'); return; }
-
-  // دخول الأدمن المخفي: نفس فورم الأعضاء تمامًا، بدون أي زر أو رابط ظاهر
-  if (id === ADMIN_PHONE && pw === ADMIN_PASS) {
-    ADMIN_OK = true;
-    document.getElementById('li-id').value = '';
-    document.getElementById('li-pw').value = '';
-    showToast('Welcome to Admin Panel ✓');
-    openPage('pg-admin');
-    switchAdminTab('overview');
-    return;
-  }
 
   var ipKey = id || 'unknown';
   loginAttempts[ipKey] = loginAttempts[ipKey] || {count:0, time:Date.now()};
@@ -1259,38 +1234,57 @@ async function doLogin() {
     showToast('Too many attempts. Try again in ' + wait + ' min'); return;
   }
 
-  // البحث عن المستخدم في البيانات المحلية
-  var matchKey = null;
-  var keys = Object.keys(U);
-  for (var i = 0; i < keys.length; i++) {
-    var k = keys[i];
-    if ((k === id || k.endsWith(id)) && U[k].pass === pw) { matchKey = k; break; }
-  }
-
-  if (!matchKey) {
+  // البحث عن الحساب عبر فهرس رقم الهاتف العام (لا يحتوي كلمات مرور ولا بيانات حساسة)
+  var idx;
+  try { idx = await db.collection('phone_index').doc(sanitizeKey(id)).get(); }
+  catch(e) { showToast('Network error, try again'); return; }
+  if (!idx.exists) {
     loginAttempts[ipKey].count++;
     showToast('Wrong credentials (' + loginAttempts[ipKey].count + '/5)'); return;
   }
-  if (U[matchKey].blocked) { showToast('This account has been blocked'); return; }
+  var matchKey = idx.data().key;
+  var firebaseEmail = idx.data().email;
 
-  var firebaseEmail = U[matchKey].firebaseEmail || (matchKey.replace(/[^a-zA-Z0-9]/g,'') + '@asse.app');
+  // التحقق الحقيقي الوحيد لكلمة المرور: عبر Firebase Auth نفسه (لا مقارنة نصية محلية إطلاقًا)
+  var cred;
   try {
-    var cred = await auth.signInWithEmailAndPassword(firebaseEmail, pw);
-    U[matchKey].firebaseUID   = cred.user.uid;
-    U[matchKey].firebaseEmail = firebaseEmail;
+    cred = await auth.signInWithEmailAndPassword(firebaseEmail, pw);
   } catch(authErr) {
-    // إذا لم يكن موجود في Firebase Auth — أنشئه تلقائياً
-    if (authErr.code==='auth/user-not-found'||authErr.code==='auth/invalid-credential'||authErr.code==='auth/invalid-email') {
-      try {
-        var nc = await auth.createUserWithEmailAndPassword(firebaseEmail, pw);
-        U[matchKey].firebaseUID   = nc.user.uid;
-        U[matchKey].firebaseEmail = firebaseEmail;
-      } catch(e2) { console.warn('Firebase Auth create fallback failed:', e2); }
-    }
-    // نكمل الدخول حتى لو فشل Firebase Auth (البيانات محلياً)
+    loginAttempts[ipKey].count++;
+    showToast('Wrong credentials (' + loginAttempts[ipKey].count + '/5)'); return;
   }
 
+  await loadMyUser(matchKey);
+  if (!U[matchKey]) {
+    U[matchKey] = {
+      phone: matchKey, id: '', name: '', bal: 0, totalEarned: 0, refBonus: 0, workDays: 0,
+      plan: null, tasksDone: 0, lastTaskDate: '', lastIncDate: '',
+      deposits: [], withdrawals: [], planPurchased: [],
+      walletAddr: '', refCode: '', refs: [], joined: fmtDate(),
+      lockedFunds: 0, teamCommission: 0, teamCommToday: 0, teamCommTodayDate: '', refBy: null
+    };
+  }
+  U[matchKey].firebaseUID = cred.user.uid;
+  U[matchKey].firebaseEmail = firebaseEmail;
+
+  if (U[matchKey].blocked) { showToast('This account has been blocked'); auth.signOut(); return; }
+
   loginAttempts[ipKey] = {count:0, time:Date.now()};
+
+  // تحقق الأدمن: وجود مستند admins/{uid} فقط — بدون أي كلمة مرور أدمن بالكود
+  var isAdm = false;
+  try { var admSnap = await db.collection('admins').doc(cred.user.uid).get(); isAdm = admSnap.exists; } catch(e) { isAdm = false; }
+  if (isAdm) {
+    ADMIN_OK = true;
+    document.getElementById('li-id').value = '';
+    document.getElementById('li-pw').value = '';
+    showToast('Welcome to Admin Panel ✓');
+    try { await loadAdminData(); } catch(e) { console.error('loadAdminData:', e); }
+    openPage('pg-admin');
+    switchAdminTab('overview');
+    return;
+  }
+
   CU = matchKey;
   saveOneU(CU).catch(function(e){ console.error('login save:',e); });
   resetDailyCycle();
@@ -1778,26 +1772,32 @@ async function submitRC() {
   // ٢. التحقق من الـ hash - إجباري ولا يقل عن 10 أحرف
   if (!hash || hash.length < 10) { showToast('Enter a valid transaction hash (min 10 chars)'); return; }
 
-  // ٣. التحقق من تكرار الـ hash في كل الطلبات
-  var hashUsed = RC.some(function(r) { return r.hash && r.hash.toLowerCase() === hash.toLowerCase(); });
-  if (hashUsed) { showToast('This transaction hash has already been used'); return; }
-
   var u = U[CU];
 
-  // ٤. منع أكثر من طلب معلق
+  // ٣. منع أكثر من طلب معلق
   var pendingRC = (u.deposits || []).some(function(d) { return d.status === 'Pending'; });
   if (pendingRC) { showToast('You already have a pending recharge request'); return; }
 
-  // ٥. ID فريد مضمون
-  var uid = Date.now() + Math.floor(Math.random() * 9999);
+  // ٤. منع تكرار الـ hash عبر كل المستخدمين — يُفرض من قاعدة البيانات نفسها (مستند فريد لكل hash، الإنشاء المكرر مرفوض بقواعد الأمان)
+  var hashKey = hash.toLowerCase();
+  try {
+    await db.collection('usedHashes').doc(sanitizeKey(hashKey)).set({ ownerKey: sanitizeKey(CU), ts: Date.now() });
+  } catch(e) {
+    showToast('This transaction hash has already been used'); return;
+  }
 
-  var rec = {id: uid, user: u.id, phone: u.phone, amt: amt, hash: hash, date: fmtDate(), status: 'Pending'};
-  RC.push(rec);
+  // ٥. ID فريد مضمون + إنشاء الطلب بمجموعة deposits مستقلة (لطابور مراجعة الأدمن)
+  var uid = Date.now() + Math.floor(Math.random() * 9999);
+  var rec = {id: uid, ownerKey: sanitizeKey(CU), user: u.id, phone: u.phone, amt: amt, hash: hash, date: fmtDate(), status: 'Pending'};
+  try {
+    var added = await db.collection('deposits').add(rec);
+    rec.__docId = added.id;
+  } catch(e) { console.error('deposit add:',e); showToast('Failed to submit — try again'); return; }
+
   u.deposits = u.deposits || [];
   u.deposits.push(rec);
   showToast('Recharge submitted - pending admin approval ✓');
   closePage('pg-crypto');
-  saveRC().catch(function(e){ console.error('saveRC:',e); });
   saveOneU(CU).catch(function(e){ console.error('saveOneU:',e); });
 }
 
@@ -1835,8 +1835,11 @@ async function doWithdraw() {
   // ٧. خصم الرصيد وحفظ الطلب بـ ID فريد
   u.bal = parseFloat(((u.bal || 0) - amt).toFixed(6));
   var uid = Date.now() + Math.floor(Math.random() * 9999);
-  var rec = {id: uid, user: u.id, phone: u.phone, amt: amt, wallet: u.walletAddr, date: fmtDate(), status: 'Pending'};
-  WD.push(rec);
+  var rec = {id: uid, ownerKey: sanitizeKey(CU), user: u.id, phone: u.phone, amt: amt, wallet: u.walletAddr, date: fmtDate(), status: 'Pending'};
+  try {
+    var added = await db.collection('withdrawals').add(rec);
+    rec.__docId = added.id;
+  } catch(e) { console.error('withdrawal add:',e); showToast('Failed to submit — try again'); u.bal = parseFloat(((u.bal||0)+amt).toFixed(6)); return; }
   u.withdrawals = u.withdrawals || [];
   u.withdrawals.push(rec);
   updateHome();
@@ -1844,7 +1847,6 @@ async function doWithdraw() {
   document.getElementById('wd-txp').value = '';
   showToast('Withdrawal request submitted ✓');
   // حفظ في الخلفية بدون تعليق واجهة المستخدم
-  saveWD().catch(function(e){ console.error('saveWD:',e); });
   saveOneU(CU).catch(function(e){ console.error('saveOneU:',e); });
 }
 
@@ -1967,10 +1969,17 @@ async function changeLP() {
   var cur = document.getElementById('lp-cur').value;
   var nw = document.getElementById('lp-new').value;
   var c = document.getElementById('lp-c').value;
-  if (u.pass && cur !== u.pass) { showToast('Current password wrong'); return; }
   if (!validatePass(nw)) { showToast('6-10 chars with letters & numbers'); return; }
   if (nw !== c) { showToast('Passwords do not match'); return; }
-  u.pass = nw; showToast('Password updated'); closePage('pg-setpw'); saveOneU(CU).catch(function(e){ console.error('changeLP:',e); });
+  if (!cur) { showToast('Enter your current password'); return; }
+  try {
+    await auth.changeOwnPassword(u.firebaseEmail, cur, nw);
+  } catch(e) {
+    if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') showToast('Current password wrong');
+    else showToast('Error: ' + (e.code || e.message || 'Unknown'));
+    return;
+  }
+  showToast('Password updated'); closePage('pg-setpw');
 }
 
 async function changeTXP() {
@@ -1981,7 +1990,6 @@ async function changeTXP() {
   if (u.txPass && cur !== u.txPass) { showToast('Current transaction password wrong'); return; }
   if (!validatePass(nw)) { showToast('6-10 chars with letters & numbers'); return; }
   if (nw !== c) { showToast('Passwords do not match'); return; }
-  if (nw === u.pass) { showToast('Transaction password must differ from login password'); return; }
   U[CU].txPass = nw; showToast('Transaction password saved ✓'); closePage('pg-settxp'); saveOneU(CU).catch(function(e){ console.error('changeTXP:',e); });
 }
 
@@ -2134,27 +2142,37 @@ async function doRegisterNew() {
   if (!agree) { showToast('Please agree to the Enrollment Agreement'); return; }
 
   var key = flag + phone;
-  if (U[key]) { showToast('Account already exists'); return; }
+  var sKey = sanitizeKey(key);
 
-  var uid;
-  do { uid = 'DB' + Math.floor(10000 + Math.random() * 90000); } while (existingIds()[uid]);
+  var existing;
+  try { existing = await db.collection('users').doc(sKey).get(); }
+  catch(e) { showToast('Network error, try again'); return; }
+  if (existing.exists) { showToast('Account already exists'); return; }
 
+  var uid, tries = 0, dupes = [];
+  do {
+    uid = 'DB' + Math.floor(10000 + Math.random() * 90000);
+    tries++;
+    try { dupes = await db.collection('users').where('id','==',uid); } catch(e) { dupes = []; }
+  } while (dupes.length && tries < 6);
+
+  // ملاحظة أمنية: لا يوجد حقل pass هنا إطلاقًا — كلمة المرور تُدار حصريًا عبر Firebase Auth
   U[key] = {
     phone: key, id: uid, name: 'User ' + uid.slice(-4),
-    pass: pw, txPass: '', bal: 0, totalEarned: 0, refBonus: 0,
+    txPass: '', bal: 0, totalEarned: 0, refBonus: 0,
     workDays: 0, plan: null, tasksDone: 0, lastTaskDate: '', lastIncDate: '',
     deposits: [], withdrawals: [], planPurchased: [], walletAddr: '',
     refCode: uid, refs: [], joined: fmtDate(), lockedFunds: 0,
     teamCommission: 0, teamCommToday: 0, teamCommTodayDate: '', refBy: null
   };
 
+  var refDocId = null;
   if (ref) {
-    var ks = Object.keys(U);
-    for (var i = 0; i < ks.length; i++) {
-      if (U[ks[i]].id === ref || U[ks[i]].refCode === ref) {
-        U[ks[i]].refs.push(uid); U[key].refBy = ks[i]; break;
-      }
-    }
+    try {
+      var m = await db.collection('users').where('id','==',ref);
+      if (!m.length) m = await db.collection('users').where('refCode','==',ref);
+      if (m.length && m[0].id !== sKey) { refDocId = m[0].id; U[key].refBy = m[0].data.phone; }
+    } catch(e) { console.warn('ref lookup failed:', e); }
   }
 
   var firebaseEmail2 = key.replace(/[^a-zA-Z0-9]/g,'') + '@asse.app';
@@ -2164,10 +2182,11 @@ async function doRegisterNew() {
     U[key].firebaseUID   = cred2.user.uid;
     U[key].firebaseEmail = firebaseEmail2;
 
-    // الخطوة 2: حفظ البيانات في Firestore
+    // الخطوة 2: حفظ البيانات في Firestore (مستند المستخدم + فهرس الهاتف + تحديث المُحيل)
     try {
-      saveOneU(key).catch(function(e){ console.error('reg save:',e); });
-      if (U[key].refBy) saveOneU(U[key].refBy).catch(function(e){ console.error('refBy save:',e); });
+      await saveOneU(key);
+      await db.collection('phone_index').doc(sanitizeKey(phone)).set({ key: key, email: firebaseEmail2 });
+      if (refDocId) await db.collection('users').doc(refDocId).update({ refs: db.arrayUnionVal(uid) });
     } catch(saveErr) {
       console.error('Firestore save error:', saveErr);
       // نكمل حتى لو فشل Firestore - الحساب تم إنشاؤه
@@ -2320,7 +2339,7 @@ function renderAdminDashboard() {
         var phone = filtered[i];
         var u = U[phone];
         html += '<div class="adm-card">';
-        html += '<div class="adm-head"><div><div class="adm-uname">📱 ' + phone + (u.blocked ? ' <span style="color:#C62828">[BLOCKED]</span>' : '') + '</div><div class="adm-uinfo">ID: ' + (u.id||'N/A') + ' • Plan: ' + (u.plan||'TRIAL') + ' • PW: ' + (u.pass||'***') + '</div></div>';
+        html += '<div class="adm-head"><div><div class="adm-uname">📱 ' + phone + (u.blocked ? ' <span style="color:#C62828">[BLOCKED]</span>' : '') + '</div><div class="adm-uinfo">ID: ' + (u.id||'N/A') + ' • Plan: ' + (u.plan||'TRIAL') + '</div></div>';
         html += '<div class="adm-bal">$' + (u.bal||0).toFixed(2) + '</div></div>';
         html += '<div class="adm-btns">';
         html += '<button class="ab add" onclick="admAddBal(\'' + phone + '\')">+ Add Bal</button>';
@@ -2377,17 +2396,24 @@ function renderAdminDashboard() {
   }
 }
 
+function syncRecStatusToUser(phone, kind, reqId, status) {
+  if (!U[phone]) return;
+  var arr = U[phone][kind] || [];
+  for (var i = 0; i < arr.length; i++) { if (arr[i].id === reqId) { arr[i].status = status; break; } }
+}
+
 async function admApproveRC(reqId) {
   var rec = RC.find(function(r){ return r.id === reqId; });
-  if (!rec) return;
+  if (!rec || !rec.__docId) return;
   rec.status = 'Approved';
   var phone = rec.phone || rec.user;
   if (U[phone]) {
     U[phone].bal = parseFloat(((U[phone].bal||0) + rec.amt).toFixed(6));
     U[phone].totalEarned = parseFloat(((U[phone].totalEarned||0) + rec.amt).toFixed(6));
+    syncRecStatusToUser(phone, 'deposits', reqId, 'Approved');
     saveOneU(phone).catch(function(){});
   }
-  saveRC().catch(function(){});
+  db.collection('deposits').doc(rec.__docId).update({status:'Approved'}).catch(function(){});
   addLog('Admin approved deposit of $' + rec.amt + ' for ' + phone);
   showToast('Deposit approved! $' + rec.amt + ' credited to ' + phone + ' ✓');
   updateAdminCounters();
@@ -2396,9 +2422,12 @@ async function admApproveRC(reqId) {
 
 async function admRejectRC(reqId) {
   var rec = RC.find(function(r){ return r.id === reqId; });
-  if (!rec) return;
+  if (!rec || !rec.__docId) return;
   rec.status = 'Rejected';
-  saveRC().catch(function(){});
+  var phone = rec.phone || rec.user;
+  syncRecStatusToUser(phone, 'deposits', reqId, 'Rejected');
+  if (U[phone]) saveOneU(phone).catch(function(){});
+  db.collection('deposits').doc(rec.__docId).update({status:'Rejected'}).catch(function(){});
   addLog('Admin rejected deposit of $' + rec.amt + ' for ' + (rec.phone||rec.user));
   showToast('Deposit request rejected');
   updateAdminCounters();
@@ -2407,9 +2436,12 @@ async function admRejectRC(reqId) {
 
 async function admApproveWD(reqId) {
   var rec = WD.find(function(w){ return w.id === reqId; });
-  if (!rec) return;
+  if (!rec || !rec.__docId) return;
   rec.status = 'Approved';
-  saveWD().catch(function(){});
+  var phone = rec.phone || rec.user;
+  syncRecStatusToUser(phone, 'withdrawals', reqId, 'Approved');
+  if (U[phone]) saveOneU(phone).catch(function(){});
+  db.collection('withdrawals').doc(rec.__docId).update({status:'Approved'}).catch(function(){});
   addLog('Admin approved cashout of $' + rec.amt + ' for ' + (rec.phone||rec.user));
   showToast('Cashout approved ✓');
   updateAdminCounters();
@@ -2418,14 +2450,15 @@ async function admApproveWD(reqId) {
 
 async function admRejectWD(reqId) {
   var rec = WD.find(function(w){ return w.id === reqId; });
-  if (!rec) return;
+  if (!rec || !rec.__docId) return;
   rec.status = 'Rejected';
   var phone = rec.phone || rec.user;
   if (U[phone]) {
     U[phone].bal = parseFloat(((U[phone].bal||0) + rec.amt).toFixed(6));
+    syncRecStatusToUser(phone, 'withdrawals', reqId, 'Rejected');
     saveOneU(phone).catch(function(){});
   }
-  saveWD().catch(function(){});
+  db.collection('withdrawals').doc(rec.__docId).update({status:'Rejected'}).catch(function(){});
   addLog('Admin rejected cashout of $' + rec.amt + ' for ' + phone + ' (refunded)');
   showToast('Cashout rejected and $' + rec.amt + ' refunded to user balance');
   updateAdminCounters();
@@ -2497,25 +2530,15 @@ function confirmAdmSetPlan() {
 }
 
 async function admResetPW(phone) {
-  admSelectedPhone = phone;
-  var u = U[phone];
-  if (!u) return;
-  document.getElementById('adm-pw-user').textContent = phone;
-  document.getElementById('adm-pw-input').value = u.pass || '';
-  openOverlay('ov-adm-pw');
+  // ملاحظة صادقة: من غير سيرفر خلفي (Cloud Function بصلاحية Admin SDK) لا يمكن لأي كود يعمل
+  // بالمتصفح تغيير كلمة مرور Firebase Auth لمستخدم آخر — هذا قيد حقيقي بمنصات Firebase وليس نقصًا بالتنفيذ.
+  // الحل الآمن حاليًا: المستخدم نفسه يغيّر كلمة مروره من داخل حسابه (Settings > Change Password)،
+  // أو تحظر/تفعّل حسابه من هنا لحين إضافة Cloud Function مخصصة لهذا الغرض مستقبلًا.
+  showToast('Admin cannot reset another user\'s password without a backend Cloud Function — ask the user to change it from their own account, or block the account instead.');
 }
 
 function confirmAdmResetPW() {
-  if (!admSelectedPhone || !U[admSelectedPhone]) return;
-  var newPW = document.getElementById('adm-pw-input').value.trim();
-  if (!newPW || newPW.length < 6) { showToast('Password must be at least 6 characters'); return; }
-  var phone = admSelectedPhone;
-  U[phone].pass = newPW;
-  saveOneU(phone).catch(function(){});
-  addLog('Admin reset password for ' + phone);
-  showToast('Password updated for ' + phone + ' ✓');
-  closeOverlay('ov-adm-pw');
-  renderAdminDashboard();
+  showToast('Not available without a backend — see note on the Change PW button.');
 }
 
 async function admToggleBlock(phone) {
@@ -2532,26 +2555,34 @@ async function admRegisterPrompt() {
   openOverlay('ov-adm-newuser');
 }
 
-function confirmAdmRegisterUser() {
+async function confirmAdmRegisterUser() {
   var ph = document.getElementById('adm-nu-phone').value.trim();
   var pw = document.getElementById('adm-nu-pass').value.trim();
   if (!ph) { showToast('Enter phone number'); return; }
-  if (U[ph]) { showToast('User already exists!'); return; }
   if (!pw || pw.length < 6) { showToast('Password must be at least 6 chars'); return; }
+
+  var sKey = sanitizeKey(ph);
+  var existing;
+  try { existing = await db.collection('users').doc(sKey).get(); }
+  catch(e) { showToast('Network error, try again'); return; }
+  if (existing.exists) { showToast('User already exists!'); return; }
+
   var uid = 'DB' + Math.floor(10000 + Math.random() * 90000);
+  var firebaseEmail = ph.replace(/[^a-zA-Z0-9]/g,'') + '@asse.app';
+  var newUid;
+  try {
+    newUid = await auth.createUserAsAdmin(firebaseEmail, pw);
+  } catch(e) { showToast('Firebase Auth error: ' + (e.code || e.message)); return; }
+
+  // ملاحظة أمنية: لا يوجد حقل pass — كلمة المرور محفوظة فقط داخل Firebase Auth
   U[ph] = {
-    id: uid,
-    phone: ph,
-    pass: pw,
-    bal: 0,
-    lockedFunds: 0,
-    teamCommission: 0,
-    totalEarned: 0,
-    workDays: 0,
-    plan: '',
-    joined: fmtDate()
+    id: uid, phone: ph, bal: 0, lockedFunds: 0, teamCommission: 0,
+    totalEarned: 0, workDays: 0, plan: '', joined: fmtDate(),
+    deposits: [], withdrawals: [], planPurchased: [], refs: [], refCode: uid,
+    firebaseUID: newUid, firebaseEmail: firebaseEmail
   };
-  saveOneU(ph).catch(function(){});
+  await saveOneU(ph).catch(function(){});
+  try { await db.collection('phone_index').doc(sKey).set({ key: ph, email: firebaseEmail }); } catch(e){}
   addLog('Admin created user ' + ph + ' (' + uid + ')');
   showToast('Created user ' + ph + ' ✓');
   closeOverlay('ov-adm-newuser');
@@ -2619,7 +2650,7 @@ window.confirmAdmRegisterUser = confirmAdmRegisterUser;
     setTimeout(function() { splash.style.display = 'none'; }, 500);
   };
   var splashTimer = setTimeout(hideSplash, 5000);
-  try { await loadData(); } catch(e){ console.error('Init loadData failed:',e); }
+  try { await loadPublicConfig(); } catch(e){ console.error('Init loadPublicConfig failed:',e); }
   finally { clearTimeout(splashTimer); hideSplash(); }
 
   auth.onAuthStateChanged(function(user) {
